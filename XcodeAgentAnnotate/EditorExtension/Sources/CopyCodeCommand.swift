@@ -1,3 +1,5 @@
+import AnnotateDomain
+import AnnotateHandoff
 import AppKit
 import XcodeKit
 
@@ -8,12 +10,13 @@ final class CopyCodeCommand: NSObject, XCSourceEditorCommand {
         do {
             guard invocation.buffer.selections.count == 1 else { throw CaptureError.multipleSelections }
             guard let range = invocation.buffer.selections.firstObject as? XCSourceTextRange,
-                  let lines = invocation.buffer.lines as? [String] else { throw CaptureError.invalidSelection }
-            let capture = try CodeCapture.capture(
-                lines: lines,
-                start: .init(line: range.start.line, column: range.start.column),
-                end: .init(line: range.end.line, column: range.end.column)
-            )
+                  let lines = invocation.buffer.lines as? [String],
+                  let selection = CodeSelection.extract(
+                      from: lines,
+                      between: SourcePosition(line: range.start.line, column: range.start.column),
+                      and: SourcePosition(line: range.end.line, column: range.end.column)
+                  )
+            else { throw CaptureError.invalidSelection }
             let digest = CaptureRequest.digest(invocation.buffer.completeBuffer)
             DispatchQueue.main.async {
                 do {
@@ -22,7 +25,7 @@ final class CopyCodeCommand: NSObject, XCSourceEditorCommand {
                     else {
                         throw CaptureError.noXcode
                     }
-                    let request = CaptureRequest(capture: capture, xcodeProcessID: xcode.processIdentifier,
+                    let request = CaptureRequest(selection: selection, xcodeProcessID: xcode.processIdentifier,
                                                  bufferDigest: digest, createdAt: Date())
                     let handoff = try CaptureTransport.publish(request)
                     let configuration = NSWorkspace.OpenConfiguration()

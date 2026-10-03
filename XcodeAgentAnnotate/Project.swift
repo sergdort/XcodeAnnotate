@@ -9,10 +9,39 @@ let settings: Settings = .settings(base: [
     "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
 ])
 
+func module(_ name: String, dependencies: [TargetDependency] = []) -> Target {
+    .target(
+        name: name,
+        destinations: .macOS,
+        product: .staticLibrary,
+        bundleId: "dev.tuist.XcodeAgentAnnotate.\(name)",
+        deploymentTargets: .macOS("14.0"),
+        sources: ["Modules/\(name)/Sources/**"],
+        dependencies: dependencies,
+        settings: .settings(base: ["SWIFT_VERSION": "6.0"])
+    )
+}
+
 let project = Project(
     name: "XcodeAgentAnnotate",
+    // Xcode's own package integration: Tuist's graph rejects CombineFeedbackTest's
+    // xctest-dynamic-overlay shim (its IssueReporting product wraps swift-issue-reporting's).
+    packages: [
+        .remote(url: "https://github.com/sergdort/CombineFeedback.git",
+                requirement: .revision("5fa5e1cb67f0a078fb06260c89a386ff773b71bd")),
+    ],
     settings: settings,
     targets: [
+        // Pure value types: selections, references, annotations and the agent prompt format.
+        module("AnnotateDomain"),
+        // Extension → app handoff shared by both processes.
+        module("AnnotateHandoff", dependencies: [.target(name: "AnnotateDomain")]),
+        // The companion's capture flow as a CombineFeedback state machine.
+        module("AnnotateFeature", dependencies: [
+            .target(name: "AnnotateDomain"),
+            .target(name: "AnnotateHandoff"),
+            .package(product: "CombineFeedback"),
+        ]),
         .target(
             name: "XcodeAgentAnnotate",
             destinations: .macOS,
@@ -29,14 +58,20 @@ let project = Project(
                     "LSUIElement": true,
                 ]
             ),
-            sources: ["XcodeAgentAnnotate/Sources/**", "Shared/**"],
+            sources: ["XcodeAgentAnnotate/Sources/**"],
             resources: ["XcodeAgentAnnotate/Resources/**"],
             scripts: [
                 .post(path: "Scripts/embed-xcodekit.sh", arguments: "containing-app",
                       name: "Preserve XcodeKit signature after extension embedding",
                       basedOnDependencyAnalysis: false),
             ],
-            dependencies: [.target(name: "AnnotateEditorExtension")],
+            dependencies: [
+                .target(name: "AnnotateEditorExtension"),
+                .target(name: "AnnotateDomain"),
+                .target(name: "AnnotateHandoff"),
+                .target(name: "AnnotateFeature"),
+                .package(product: "CombineFeedback"),
+            ],
             settings: .settings(base: [
                 "ENABLE_APP_SANDBOX": "NO",
                 "CODE_SIGN_IDENTITY": "Apple Development",
@@ -62,13 +97,17 @@ let project = Project(
                     ],
                 ],
             ]),
-            sources: ["EditorExtension/Sources/**", "Shared/**"],
+            sources: ["EditorExtension/Sources/**"],
             entitlements: .file(path: "EditorExtension/EditorExtension.entitlements"),
             scripts: [
                 .post(path: "Scripts/embed-xcodekit.sh", name: "Embed Apple-signed XcodeKit",
                       basedOnDependencyAnalysis: false),
             ],
-            dependencies: [.sdk(name: "XcodeKit", type: .framework)],
+            dependencies: [
+                .sdk(name: "XcodeKit", type: .framework),
+                .target(name: "AnnotateDomain"),
+                .target(name: "AnnotateHandoff"),
+            ],
             settings: .settings(base: [
                 // Tuist's generic .appExtension needs Xcode's source-editor bootstrap.
                 // Match com.apple.product-type.xcode-extension in Xcode's product spec.
@@ -88,8 +127,15 @@ let project = Project(
             bundleId: "dev.tuist.XcodeAgentAnnotateTests",
             deploymentTargets: .macOS("14.0"),
             infoPlist: .default,
-            sources: ["XcodeAgentAnnotate/Tests/**", "Shared/**"],
-            dependencies: []
+            sources: ["XcodeAgentAnnotate/Tests/**"],
+            dependencies: [
+                .target(name: "AnnotateDomain"),
+                .target(name: "AnnotateHandoff"),
+                .target(name: "AnnotateFeature"),
+                .package(product: "CombineFeedback"),
+                .package(product: "CombineFeedbackTest"),
+            ],
+            settings: .settings(base: ["SWIFT_VERSION": "6.0"])
         ),
     ]
 )

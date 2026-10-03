@@ -103,11 +103,53 @@ XcodeKit command: capture selection/current line + buffer digest + Xcode PID
 - No persistence, decorations, categories, sidebar, networking, or App Store
   distribution setup. Accessibility tree changes can cause safe rejection.
 
+## Architecture
+
+```text
+AnnotateDomain   SourcePosition, SourceRange, CodeSelection, CodeReference,
+                 AnnotationMessage, Annotation, AgentPrompt (clipboard format)
+AnnotateHandoff  CaptureRequest, CaptureTransport, CaptureError   (+ Domain)
+AnnotateFeature  CaptureSession state machine (CombineFeedback)   (+ Domain, Handoff)
+EditorExtension  XcodeKit command → Domain + Handoff only
+App              Store owner, live dependencies, AppKit presenter, SwiftUI views
+```
+
+`CaptureSession` owns the companion's lifecycle:
+
+```text
+idle ──handoffReceived──▶ resolving ──resolved──▶ composing ──submitted──▶ copying ──copied──▶ idle
+                              │                      │  ▲                     │
+                              └─failed─▶ failed      │  └────copyFailed───────┘
+                                  │                  └──cancelled──▶ idle
+                                  └─failureAcknowledged──▶ idle
+```
+
+A newer handoff always replaces the current one; a stale resolution is ignored.
+Effects are state-owned: resolution runs while `resolving`, the clipboard write
+runs while `copying`. Both are injected (`CaptureSession.Dependencies`), so the
+machine is tested without Xcode, Accessibility, or the real clipboard.
+`State.presentation` (hidden / composer / failure) is all the AppKit presenter
+renders.
+
+Future batch collection is meant to grow here: `Annotation` is already the
+unit a collection would store, and the `submitted` transition is the single
+place where "copy now" could become "add to collection".
+
+CombineFeedback is integrated as an Xcode-native Swift package (pinned revision
+in `Project.swift`, lockfile `.package.resolved`) rather than through
+`Tuist/Package.swift`: Tuist's dependency graph reports a circular dependency
+because `CombineFeedbackTest` references `IssueReporting` through the
+`xctest-dynamic-overlay` shim, which re-exports a product with the same name
+from `swift-issue-reporting`. Local modules are static libraries because Tuist
+does not allow the app extension to depend on static frameworks.
+
 ## Verification
 
 The automated suite protects selection extraction, exact clipboard bytes and
 backtick fences, JavaScript-compatible message trimming, and single-use/expired
-handoffs without changing the general clipboard. It is not proof of live Xcode
+handoffs without changing the general clipboard, and the `CaptureSession`
+transitions (copy once, refused write keeps the draft, failure acknowledgement,
+cancel without copying, stale resolutions). It is not proof of live Xcode
 extension loading, Accessibility structure, or keyboard behavior.
 
 After enabling both permissions, use `Samples/SelectionFixture.swift` in Xcode:
