@@ -15,7 +15,7 @@ func module(_ name: String, dependencies: [TargetDependency] = []) -> Target {
         destinations: .macOS,
         product: .staticLibrary,
         bundleId: "dev.tuist.XcodeAgentAnnotate.\(name)",
-        deploymentTargets: .macOS("14.0"),
+        deploymentTargets: .macOS("15.0"),
         sources: ["Modules/\(name)/Sources/**"],
         dependencies: dependencies,
         settings: .settings(base: ["SWIFT_VERSION": "6.0"])
@@ -29,6 +29,8 @@ let project = Project(
     packages: [
         .remote(url: "https://github.com/sergdort/CombineFeedback.git",
                 requirement: .revision("5fa5e1cb67f0a078fb06260c89a386ff773b71bd")),
+        .remote(url: "https://github.com/appstefan/HighlightSwift.git",
+                requirement: .upToNextMajor(from: "1.1.0")),
     ],
     settings: settings,
     targets: [
@@ -47,7 +49,7 @@ let project = Project(
             destinations: .macOS,
             product: .app,
             bundleId: "dev.tuist.XcodeAgentAnnotate",
-            deploymentTargets: .macOS("14.0"),
+            deploymentTargets: .macOS("15.0"),
             infoPlist: .extendingDefault(
                 with: [
                     "CFBundleDisplayName": "Annotate for Agent",
@@ -71,6 +73,7 @@ let project = Project(
                 .target(name: "AnnotateHandoff"),
                 .target(name: "AnnotateFeature"),
                 .package(product: "CombineFeedback"),
+                .package(product: "HighlightSwift"),
             ],
             settings: .settings(base: [
                 "ENABLE_APP_SANDBOX": "NO",
@@ -82,7 +85,7 @@ let project = Project(
             destinations: .macOS,
             product: .appExtension,
             bundleId: "dev.tuist.XcodeAgentAnnotate.EditorExtension",
-            deploymentTargets: .macOS("14.0"),
+            deploymentTargets: .macOS("15.0"),
             infoPlist: .extendingDefault(with: [
                 "CFBundleDisplayName": "Annotate for Agent",
                 "NSExtension": [
@@ -125,7 +128,7 @@ let project = Project(
             destinations: .macOS,
             product: .unitTests,
             bundleId: "dev.tuist.XcodeAgentAnnotateTests",
-            deploymentTargets: .macOS("14.0"),
+            deploymentTargets: .macOS("15.0"),
             infoPlist: .default,
             sources: ["XcodeAgentAnnotate/Tests/**"],
             dependencies: [

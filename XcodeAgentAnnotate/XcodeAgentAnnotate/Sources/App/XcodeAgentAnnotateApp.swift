@@ -60,16 +60,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSetupWindow(activate: Bool) {
         if setupWindow == nil {
-            let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 520, height: 360),
-                                  styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            let hosting = NSHostingController(rootView: SetupView())
+            hosting.sizingOptions = .preferredContentSize
+            let window = NSWindow(contentViewController: hosting)
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
             window.title = "Annotate for Agent — Setup"
             window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: SetupView())
             window.center()
             setupWindow = window
         }
         if activate {
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.activate()
             setupWindow?.makeKeyAndOrderFront(nil)
         } else {
             setupWindow?.orderFront(nil)

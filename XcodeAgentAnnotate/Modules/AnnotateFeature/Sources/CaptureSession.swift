@@ -6,11 +6,17 @@ import Foundation
 /// A capture whose file has been resolved, ready for the user to write a message.
 public struct ResolvedCapture: Equatable, Sendable {
     public let reference: CodeReference
+    /// The complete lines around the selection, for display.
+    public let excerpt: SourceExcerpt
+    /// The user had only a caret, so the selection is the current line.
+    public let isCurrentLine: Bool
     /// The Xcode process to return focus to when the composer closes.
     public let sourceProcessID: Int32
 
-    public init(reference: CodeReference, sourceProcessID: Int32) {
+    public init(reference: CodeReference, excerpt: SourceExcerpt, isCurrentLine: Bool, sourceProcessID: Int32) {
         self.reference = reference
+        self.excerpt = excerpt
+        self.isCurrentLine = isCurrentLine
         self.sourceProcessID = sourceProcessID
     }
 }
@@ -38,13 +44,17 @@ public struct CaptureSession: StateMachine {
         public var resolve: @Sendable (URL) async -> Result<ResolvedCapture, CaptureError>
         /// Writes text to the general clipboard; `false` when macOS refuses.
         public var copy: @Sendable (String) async -> Bool
+        /// Suspends for as long as the "Copied" confirmation stays on screen.
+        public var showConfirmation: @Sendable () async -> Void
 
         public init(
             resolve: @escaping @Sendable (URL) async -> Result<ResolvedCapture, CaptureError>,
-            copy: @escaping @Sendable (String) async -> Bool
+            copy: @escaping @Sendable (String) async -> Bool,
+            showConfirmation: @escaping @Sendable () async -> Void
         ) {
             self.resolve = resolve
             self.copy = copy
+            self.showConfirmation = showConfirmation
         }
     }
 
@@ -54,6 +64,8 @@ public struct CaptureSession: StateMachine {
         case composing(ComposerDraft)
         /// Invariant: the draft has a valid annotation.
         case copying(ComposerDraft)
+        /// The prompt is on the clipboard; briefly confirmed before returning to idle.
+        case copied(Annotation)
         case failed(CaptureError)
     }
 
@@ -65,6 +77,7 @@ public struct CaptureSession: StateMachine {
         case cancelled
         case copied
         case copyFailed(CaptureError)
+        case confirmationEnded
         case failureAcknowledged
     }
 
@@ -79,6 +92,7 @@ public struct CaptureSession: StateMachine {
         Self.reducer
         whenResolving
         whenCopying
+        whenCopied
     }
 
     public static var reducer: Reducer<State, Event> {
@@ -101,7 +115,9 @@ public struct CaptureSession: StateMachine {
                 state = .copying(draft)
             case (.composing, .cancelled):
                 state = .idle
-            case (.copying, .copied):
+            case let (.copying(draft), .copied):
+                state = draft.annotation.map(State.copied) ?? .idle
+            case (.copied, .confirmationEnded):
                 state = .idle
             case (.copying(var draft), let .copyFailed(error)):
                 draft.problem = error
@@ -125,6 +141,13 @@ public struct CaptureSession: StateMachine {
             await dependencies.copy(prompt) ? .copied : .copyFailed(.clipboardWriteFailed)
         }
     }
+
+    private var whenCopied: OnChange<State, Event, Annotation> {
+        OnChange(of: \.copiedAnnotation) { [dependencies] _ async in
+            await dependencies.showConfirmation()
+            return .confirmationEnded
+        }
+    }
 }
 
 public extension CaptureSession.State {
@@ -132,6 +155,7 @@ public extension CaptureSession.State {
     enum Presentation: Equatable, Sendable {
         case hidden
         case composer(sourceProcessID: Int32)
+        case confirmation(Annotation)
         case failure(CaptureError)
     }
 
@@ -139,6 +163,7 @@ public extension CaptureSession.State {
         switch self {
         case .idle, .resolving: .hidden
         case let .composing(draft), let .copying(draft): .composer(sourceProcessID: draft.capture.sourceProcessID)
+        case let .copied(annotation): .confirmation(annotation)
         case let .failed(error): .failure(error)
         }
     }
@@ -146,7 +171,7 @@ public extension CaptureSession.State {
     var draft: ComposerDraft? {
         switch self {
         case let .composing(draft), let .copying(draft): draft
-        case .idle, .resolving, .failed: nil
+        case .idle, .resolving, .copied, .failed: nil
         }
     }
 
@@ -156,6 +181,10 @@ public extension CaptureSession.State {
 
     internal var pendingHandoff: URL? {
         if case let .resolving(url) = self { url } else { nil }
+    }
+
+    internal var copiedAnnotation: Annotation? {
+        if case let .copied(annotation) = self { annotation } else { nil }
     }
 
     internal var promptToCopy: String? {

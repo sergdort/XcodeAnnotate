@@ -15,6 +15,8 @@ struct CaptureSessionTests {
             file: URL(fileURLWithPath: "/a.swift"),
             selection: CodeSelection(range: SourceRange(.init(line: 0, column: 0), .init(line: 0, column: 1)), text: "x")
         ),
+        excerpt: SourceExcerpt(firstLine: 0, lines: ["x"]),
+        isCurrentLine: false,
         sourceProcessID: 42
     )
 
@@ -37,13 +39,14 @@ struct CaptureSessionTests {
     ) -> TestStore<State, CaptureSession.Event> {
         TestStore(initial: .idle, machine: CaptureSession(dependencies: .init(
             resolve: { _ in result },
-            copy: { await clipboard.write($0) }
+            copy: { await clipboard.write($0) },
+            showConfirmation: {}
         )))
     }
 
     // MARK: Feedback loop
 
-    @Test func copiesTheRenderedPromptOnceThenReturnsToIdle() async {
+    @Test func copiesTheRenderedPromptOnceAndConfirmsBeforeReturningToIdle() async {
         let clipboard = Clipboard(accepts: true)
         let store = Self.store(clipboard: clipboard)
 
@@ -52,6 +55,7 @@ struct CaptureSessionTests {
         store.send(.messageChanged(" explain "))
         store.send(.submitted)
         await store.wait { $0.isCopying }
+        await store.wait { if case .confirmation = $0.presentation { true } else { false } }
         await store.wait { $0 == .idle }
 
         #expect(await clipboard.writes ==

@@ -8,7 +8,8 @@ struct HandoffTests {
         let clipboardVersion = NSPasteboard.general.changeCount
         let selection = CodeSelection(range: SourceRange(.init(line: 0, column: 0), .init(line: 0, column: 6)),
                                       text: "secret")
-        let request = CaptureRequest(selection: selection, xcodeProcessID: 123,
+        let request = CaptureRequest(selection: selection, excerpt: SourceExcerpt(firstLine: 0, lines: [selection.text]),
+                                     isCurrentLine: false, xcodeProcessID: 123,
                                      bufferDigest: CaptureRequest.digest("secret"), createdAt: Date())
         let handoff = try CaptureTransport.publish(request)
         defer { CaptureTransport.discard(handoff.token) }
@@ -24,7 +25,8 @@ struct HandoffTests {
     @Test @MainActor func rejectsExpiredAndUnrelatedHandoffs() throws {
         let selection = CodeSelection(range: SourceRange(.init(line: 0, column: 0), .init(line: 0, column: 1)),
                                       text: "x")
-        let request = CaptureRequest(selection: selection, xcodeProcessID: 123, bufferDigest: "digest",
+        let request = CaptureRequest(selection: selection, excerpt: SourceExcerpt(firstLine: 0, lines: [selection.text]),
+                                     isCurrentLine: false, xcodeProcessID: 123, bufferDigest: "digest",
                                      createdAt: Date().addingTimeInterval(-120))
         let handoff = try CaptureTransport.publish(request)
         defer { CaptureTransport.discard(handoff.token) }

@@ -1,5 +1,5 @@
 {
-  "originHash" : "27473ea8efcd2ad7668544a453c211a53222753b9f994d055a56de9c11c1698a",
+  "originHash" : "a89eafdefb43c5d88660182f0b2e46c8ff44558fd42750f2609617c00c8fcf51",
   "pins" : [
     {
       "identity" : "combine-schedulers",
@@ -16,6 +16,15 @@
       "location" : "https://github.com/sergdort/CombineFeedback.git",
       "state" : {
         "revision" : "5fa5e1cb67f0a078fb06260c89a386ff773b71bd"
+      }
+    },
+    {
+      "identity" : "highlightswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/appstefan/HighlightSwift.git",
+      "state" : {
+        "revision" : "784ca3ccfc8a2cf724fbb2f06cb6ec3329424da3",
+        "version" : "1.1.0"
       }
     },
     {

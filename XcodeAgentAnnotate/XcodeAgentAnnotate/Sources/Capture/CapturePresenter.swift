@@ -1,17 +1,16 @@
 import AnnotateFeature
-import AnnotateHandoff
 import AppKit
 import Combine
 import CombineFeedback
 import SwiftUI
 
-/// Renders `CaptureSession.State.Presentation` with AppKit windows. Holds no flow state of its own.
+/// Renders `CaptureSession.State.Presentation` with floating panels. Holds no flow state of its own.
 @MainActor
-final class CapturePresenter: NSObject, NSWindowDelegate {
+final class CapturePresenter {
     private let store: Store<CaptureSession.State, CaptureSession.Event>
     private let onComposerShown: () -> Void
     private var subscription: AnyCancellable?
-    private var panel: NSPanel?
+    private var panel: FloatingPanel?
     private var shown = CaptureSession.State.Presentation.hidden
 
     init(store: Store<CaptureSession.State, CaptureSession.Event>, onComposerShown: @escaping () -> Void) {
@@ -34,53 +33,35 @@ final class CapturePresenter: NSObject, NSWindowDelegate {
     private func render(_ presentation: CaptureSession.State.Presentation) {
         let previous = shown
         shown = presentation
+        // A fresh panel per presentation resets focus, scroll position and size.
+        panel?.orderOut(nil)
+        panel = nil
         switch presentation {
         case .hidden:
-            closePanel()
-            if case let .composer(sourceProcessID) = previous {
-                NSRunningApplication(processIdentifier: sourceProcessID)?.activate(options: [])
-            }
+            returnFocus(after: previous)
         case .composer:
-            showPanel()
+            onComposerShown()
+            show(FloatingPanel(acceptsKey: true, content: ComposerView(store: store)))
+        case let .confirmation(annotation):
+            show(FloatingPanel(acceptsKey: false, content: ConfirmationView(annotation: annotation)))
+            returnFocus(after: previous)
         case let .failure(error):
-            closePanel()
-            // Leave the publisher callback before running a modal loop.
-            DispatchQueue.main.async { [store] in
-                NSApp.activate(ignoringOtherApps: true)
-                let alert = NSAlert()
-                alert.messageText = "Cannot Copy Code with Message"
-                alert.informativeText = error.localizedDescription
-                alert.runModal()
+            show(FloatingPanel(acceptsKey: true, content: FailureView(error: error) { [store] in
                 store.send(event: .failureAcknowledged)
-            }
+            }))
         }
     }
 
-    private func showPanel() {
-        if panel == nil {
-            let panel = NSPanel(contentRect: .init(x: 0, y: 0, width: 620, height: 420),
-                                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            panel.title = "Copy Code with Message"
-            panel.isReleasedWhenClosed = false
-            panel.hidesOnDeactivate = false
-            panel.delegate = self
-            panel.contentView = NSHostingView(rootView: ComposerView(store: store))
-            panel.center()
-            self.panel = panel
-        }
-        onComposerShown()
-        NSApp.activate(ignoringOtherApps: true)
-        panel?.makeKeyAndOrderFront(nil)
+    private func show(_ panel: FloatingPanel) {
+        panel.placeOnActiveScreen()
+        panel.orderFrontRegardless()
+        if panel.canBecomeKey { panel.makeKey() }
+        self.panel = panel
     }
 
-    private func closePanel() {
-        panel?.orderOut(nil)
-        // A fresh view per capture resets focus and scroll position.
-        panel = nil
-    }
-
-    func windowShouldClose(_: NSWindow) -> Bool {
-        store.send(event: .cancelled)
-        return false
+    /// Hands focus back to the Xcode window the capture came from.
+    private func returnFocus(after previous: CaptureSession.State.Presentation) {
+        guard case let .composer(sourceProcessID) = previous else { return }
+        NSRunningApplication(processIdentifier: sourceProcessID)?.activate()
     }
 }

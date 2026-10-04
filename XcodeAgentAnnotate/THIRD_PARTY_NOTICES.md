@@ -25,3 +25,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## HighlightSwift (MIT License)
+
+https://github.com/appstefan/HighlightSwift — Copyright (c) 2023 Stefan Britton.
+Licensed under the MIT License above.
+
+## highlight.js (BSD-3-Clause)
+
+Bundled by HighlightSwift. Highlight.js v11.9.0 — Copyright (c) 2006,
+Ivan Sagalaev and other contributors. Licensed under the BSD 3-Clause License:
+https://github.com/highlightjs/highlight.js/blob/main/LICENSE

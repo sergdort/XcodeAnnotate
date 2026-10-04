@@ -54,4 +54,23 @@ struct DomainTests {
         #expect(AnnotationMessage(" \t\n\u{FEFF}") == nil)
         #expect(AnnotationMessage("\u{001C}hello\u{001F}")?.text == "\u{001C}hello\u{001F}")
     }
+
+    @Test func excerptShowsWholeDedentedLinesWithTheSelectedColumns() throws {
+        let buffer = ["func f() {\n", "        let a = 1\r\n", "\n", "    return a\n", "}\n"]
+        let range = SourceRange(.init(line: 1, column: 12), .init(line: 3, column: 6))
+        let excerpt = try #require(SourceExcerpt.covering(range, in: buffer))
+        #expect(excerpt == SourceExcerpt(firstLine: 1, lines: ["        let a = 1", "", "    return a"]))
+        #expect(excerpt.layout(selecting: range) == [
+            ExcerptLine(number: 2, text: "    let a = 1", selected: 8 ..< 13),
+            ExcerptLine(number: 3, text: "", selected: 0 ..< 0),
+            ExcerptLine(number: 4, text: "return a", selected: 0 ..< 2),
+        ])
+    }
+
+    @Test func excerptOmitsTheLineASelectionEndsBefore() {
+        let range = SourceRange(.init(line: 0, column: 0), .init(line: 1, column: 0))
+        #expect(SourceExcerpt.covering(range, in: ["abc\n", "def\n"]) == SourceExcerpt(firstLine: 0, lines: ["abc"]))
+        #expect(SourceExcerpt.covering(SourceRange(.init(line: 5, column: 0), .init(line: 5, column: 1)),
+                                       in: ["abc\n"]) == nil)
+    }
 }

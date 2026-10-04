@@ -10,12 +10,12 @@ final class CopyCodeCommand: NSObject, XCSourceEditorCommand {
         do {
             guard invocation.buffer.selections.count == 1 else { throw CaptureError.multipleSelections }
             guard let range = invocation.buffer.selections.firstObject as? XCSourceTextRange,
-                  let lines = invocation.buffer.lines as? [String],
-                  let selection = CodeSelection.extract(
-                      from: lines,
-                      between: SourcePosition(line: range.start.line, column: range.start.column),
-                      and: SourcePosition(line: range.end.line, column: range.end.column)
-                  )
+                  let lines = invocation.buffer.lines as? [String]
+            else { throw CaptureError.invalidSelection }
+            let start = SourcePosition(line: range.start.line, column: range.start.column)
+            let end = SourcePosition(line: range.end.line, column: range.end.column)
+            guard let selection = CodeSelection.extract(from: lines, between: start, and: end),
+                  let excerpt = SourceExcerpt.covering(selection.range, in: lines)
             else { throw CaptureError.invalidSelection }
             let digest = CaptureRequest.digest(invocation.buffer.completeBuffer)
             DispatchQueue.main.async {
@@ -25,8 +25,10 @@ final class CopyCodeCommand: NSObject, XCSourceEditorCommand {
                     else {
                         throw CaptureError.noXcode
                     }
-                    let request = CaptureRequest(selection: selection, xcodeProcessID: xcode.processIdentifier,
-                                                 bufferDigest: digest, createdAt: Date())
+                    let request = CaptureRequest(
+                        selection: selection, excerpt: excerpt, isCurrentLine: start == end,
+                        xcodeProcessID: xcode.processIdentifier, bufferDigest: digest, createdAt: Date()
+                    )
                     let handoff = try CaptureTransport.publish(request)
                     let configuration = NSWorkspace.OpenConfiguration()
                     configuration.activates = false

@@ -13,6 +13,8 @@ extension CaptureSession.Dependencies {
                     let file = try XcodeDocumentResolver.resolve(request)
                     return .success(ResolvedCapture(
                         reference: CodeReference(file: file, selection: request.selection),
+                        excerpt: request.excerpt,
+                        isCurrentLine: request.isCurrentLine,
                         sourceProcessID: request.xcodeProcessID
                     ))
                 } catch let error as CaptureError {
@@ -27,6 +29,9 @@ extension CaptureSession.Dependencies {
                 NSPasteboard.general.clearContents()
                 return NSPasteboard.general.setString(text, forType: .string)
             }
+        },
+        showConfirmation: {
+            try? await Task.sleep(for: .seconds(1.2))
         }
     )
 }

@@ -8,7 +8,7 @@ The command never edits source files or selections.
 
 ## Build
 
-Requires macOS 14+, Xcode, mise, and a development signing identity.
+Requires macOS 15+, Xcode, mise, and a development signing identity.
 From this directory:
 
 ```sh
@@ -60,16 +60,17 @@ codesign --verify --deep --strict --verbose=2 Build/Products/Debug/XcodeAgentAnn
    user Applications folder), then open it once. Use one installed copy to avoid
    LaunchServices resolving the URL scheme to an older build.
 2. In System Settings, enable **Annotate for Agent** under **General → Login Items
-   & Extensions → Xcode Source Editor**. On macOS 14, look under **Privacy &
-   Security → Extensions** instead. Restart Xcode if the command does not appear.
-3. In the app's setup window, click **Request Accessibility Access**, then enable
-   the app in **Privacy & Security → Accessibility**. If macOS does not pick up
+   & Extensions → Xcode Source Editor**. Restart Xcode if the command does not
+   appear.
+3. In the app's setup checklist, click **Allow…**, then enable the app in
+   **Privacy & Security → Accessibility**. The row turns to Done once granted. If macOS does not pick up
    the change, quit and reopen the app.
 4. In Xcode, focus a saved local source file and select text or leave one caret.
    Use **Editor → Annotate for Agent → Copy Code with Message**.
-5. Check the displayed file path, enter a nonblank message, and press Enter or
-   click Copy. Escape, Cancel, and closing the panel leave the general clipboard
-   unchanged. Focus returns to Xcode after the panel closes.
+5. A floating panel shows the file, range and highlighted lines (text outside
+   the selection is dimmed). Type a nonblank message and press Return. Escape
+   leaves the general clipboard unchanged. Focus returns to Xcode, and a short
+   "Copied for your agent" confirmation appears after copying.
 
 Assign a shortcut yourself in **Xcode → Settings → Key Bindings**. Xcode does not
 let source extensions ship an automatic default shortcut.
@@ -80,7 +81,7 @@ let source extensions ship an automatic default shortcut.
 XcodeKit command: capture selection/current line + buffer digest + Xcode PID
     → UUID-named pasteboard + token-only local launch URL
     → companion: verify focused AX editor, resolve AXDocument file URL
-    → message panel: confirm → general clipboard; cancel → no clipboard write
+    → floating composer: Return → general clipboard + HUD; Esc → no clipboard write
 ```
 
 - XcodeKit has no file-path API. Accessibility is required; the companion resolves
@@ -107,17 +108,19 @@ XcodeKit command: capture selection/current line + buffer digest + Xcode PID
 
 ```text
 AnnotateDomain   SourcePosition, SourceRange, CodeSelection, CodeReference,
-                 AnnotationMessage, Annotation, AgentPrompt (clipboard format)
+                 AnnotationMessage, Annotation, AgentPrompt (clipboard format),
+                 SourceExcerpt (whole lines shown around a selection)
 AnnotateHandoff  CaptureRequest, CaptureTransport, CaptureError   (+ Domain)
 AnnotateFeature  CaptureSession state machine (CombineFeedback)   (+ Domain, Handoff)
 EditorExtension  XcodeKit command → Domain + Handoff only
-App              Store owner, live dependencies, AppKit presenter, SwiftUI views
+App              Store owner, live dependencies, presenter (borderless panels),
+                 SwiftUI views, HighlightSwift code highlighting
 ```
 
 `CaptureSession` owns the companion's lifecycle:
 
 ```text
-idle ──handoffReceived──▶ resolving ──resolved──▶ composing ──submitted──▶ copying ──copied──▶ idle
+idle ──handoffReceived──▶ resolving ──resolved──▶ composing ──submitted──▶ copying ──copied──▶ copied ──confirmationEnded──▶ idle
                               │                      │  ▲                     │
                               └─failed─▶ failed      │  └────copyFailed───────┘
                                   │                  └──cancelled──▶ idle
@@ -126,17 +129,29 @@ idle ──handoffReceived──▶ resolving ──resolved──▶ composing 
 
 A newer handoff always replaces the current one; a stale resolution is ignored.
 Effects are state-owned: resolution runs while `resolving`, the clipboard write
-runs while `copying`. Both are injected (`CaptureSession.Dependencies`), so the
+runs while `copying`, and the confirmation lingers while `copied`. All are injected (`CaptureSession.Dependencies`), so the
 machine is tested without Xcode, Accessibility, or the real clipboard.
-`State.presentation` (hidden / composer / failure) is all the AppKit presenter
-renders.
+`State.presentation` (hidden / composer / confirmation / failure) is all the
+presenter renders.
+
+The UI follows the Paper design: a borderless floating composer, a
+non-activating "Copied" HUD, an inline Accessibility/failure card and a setup
+checklist. The app keeps an AppKit lifecycle (`main` + `AppDelegate`) because it
+must launch silently from a URL and show setup only on a plain launch, and the
+composer needs a key-capable borderless `NSPanel`; all window content is SwiftUI.
+
+Highlighting uses [HighlightSwift](https://github.com/appstefan/HighlightSwift)
+(highlight.js via JavaScriptCore). The language comes from the file extension;
+unknown types stay plain. The extension sends whole lines covering the selection
+so partial selections highlight correctly. Highlighting is display-only: the
+clipboard text is unchanged.
 
 Future batch collection is meant to grow here: `Annotation` is already the
 unit a collection would store, and the `submitted` transition is the single
 place where "copy now" could become "add to collection".
 
-CombineFeedback is integrated as an Xcode-native Swift package (pinned revision
-in `Project.swift`, lockfile `.package.resolved`) rather than through
+CombineFeedback and HighlightSwift are integrated as Xcode-native Swift packages
+(pinned in `Project.swift`, lockfile `.package.resolved`) rather than through
 `Tuist/Package.swift`: Tuist's dependency graph reports a circular dependency
 because `CombineFeedbackTest` references `IssueReporting` through the
 `xctest-dynamic-overlay` shim, which re-exports a product with the same name
@@ -149,7 +164,8 @@ The automated suite protects selection extraction, exact clipboard bytes and
 backtick fences, JavaScript-compatible message trimming, and single-use/expired
 handoffs without changing the general clipboard, and the `CaptureSession`
 transitions (copy once, refused write keeps the draft, failure acknowledgement,
-cancel without copying, stale resolutions). It is not proof of live Xcode
+cancel without copying, stale resolutions, confirmation), and excerpt
+line/dedent layout. It is not proof of live Xcode
 extension loading, Accessibility structure, or keyboard behavior.
 
 After enabling both permissions, use `Samples/SelectionFixture.swift` in Xcode:
